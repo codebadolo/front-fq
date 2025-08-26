@@ -1,43 +1,37 @@
-// src/layouts/DashboardLayout.js
-import {
-    HomeOutlined,
-    UnorderedListOutlined,
-    UploadOutlined,
-} from '@ant-design/icons';
-import { Layout, Menu } from 'antd';
+import { Layout } from 'antd';
 import { useState } from 'react';
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
 
-const { Header, Content, Sider } = Layout;
+import Sidebar from '../components/Sidebar';
+import Topbar from '../components/Topbar';
+
+const { Content } = Layout;
 
 const DashboardLayout = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
 
-  const menuItems = [
-    { key: '/', icon: <HomeOutlined />, label: 'Accueil' },
-    { key: '/quizzes', icon: <UnorderedListOutlined />, label: 'Liste des Quiz' },
-    { key: '/upload', icon: <UploadOutlined />, label: 'Importer Document' },
-  ];
+  const handleToggle = () => {
+    setCollapsed(!collapsed);
+  };
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Sider collapsible collapsed={collapsed} onCollapse={setCollapsed}>
-        <div style={{ height: 32, margin: 16, color: 'white', textAlign: 'center' }}>
-          LOGO
-        </div>
-        <Menu
-          theme="dark"
-          selectedKeys={[location.pathname]}
-          mode="inline"
-          items={menuItems}
-          onClick={({ key }) => navigate(key)}
-        />
-      </Sider>
+      <Layout.Sider collapsible collapsed={collapsed} trigger={null} width={240}>
+        <Sidebar collapsed={collapsed} onCollapse={setCollapsed} />
+      </Layout.Sider>
+
       <Layout>
-        <Header style={{ background: '#fff', padding: 0 }} />
-        <Content style={{ margin: '16px' }}>
+        <Topbar collapsed={collapsed} onToggle={handleToggle} />
+        <Content
+          style={{
+            marginTop: 64,
+            marginLeft: collapsed ? 2 : 20,
+            padding: 24,
+            minHeight: 'calc(100vh - 64px)',
+            transition: 'margin-left 0.3s',
+            background: '#fff',
+          }}
+        >
           <Outlet />
         </Content>
       </Layout>

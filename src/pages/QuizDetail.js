@@ -1,91 +1,146 @@
-import { Button, Card, Checkbox, List, message, Spin, Typography } from 'antd';
-import axios from 'axios';
-import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useEffect, useState, useMemo } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import {
+  Card,
+  Typography,
+  Radio,
+  Breadcrumb,
+  Spin,
+  message,
+  Button,
+  Row,
+  Col,
+  Input,
+  Space,
+} from 'antd';
+import { HomeOutlined } from '@ant-design/icons';
+import api from '../api';
+import QuestionUpdateModal from './QuestionUpdateModal';
 
-const { Title } = Typography;
+const { Title, Paragraph } = Typography;
 
 const QuizDetail = () => {
   const { id } = useParams();
-  const [quiz, setQuiz] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [answers, setAnswers] = useState({}); // {questionId: [idRéponses cochées]}
+  const navigate = useNavigate();
 
-  useEffect(() => {
+  const [quiz, setQuiz] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [modalVisible, setModalVisible] = useState(false);
+  const [questionToEdit, setQuestionToEdit] = useState(null);
+
+  const loadQuiz = () => {
     setLoading(true);
-    axios.get(`http://localhost:8000/api/quizzes/${id}/`)
+    api.get(`/quizzes/${id}/`)
       .then(res => {
         setQuiz(res.data);
-        // Initialiser l’état des réponses cochées selon ce qui est correct
-        const initial = {};
-        res.data.questions.forEach(q => {
-          initial[q.id] = q.reponses.filter(r => r.est_correcte).map(r => r.id);
-        });
-        setAnswers(initial);
+        setLoading(false);
       })
-      .catch(() => message.error('Erreur chargement quiz'))
-      .finally(() => setLoading(false));
+      .catch(() => {
+        message.error("Erreur lors du chargement du quiz");
+        setLoading(false);
+      });
+  };
+
+  useEffect(() => {
+    loadQuiz();
   }, [id]);
 
-  const onChange = (questionId, checkedValues) => {
-    setAnswers(prev => ({
-      ...prev,
-      [questionId]: checkedValues
-    }));
+  const openModal = (question) => {
+    setQuestionToEdit(question);
+    setModalVisible(true);
   };
 
-  const saveAnswers = () => {
-    setLoading(true);
-    // Pour chaque réponse, envoyer un patch sur backend pour mettre à jour est_correcte
-    const patches = [];
-    quiz.questions.forEach(q => {
-      q.reponses.forEach(r => {
-        const isCorrect = answers[q.id]?.includes(r.id) || false;
-        if (r.est_correcte !== isCorrect) {
-          patches.push(
-            axios.patch(`http://localhost:8000/api/reponses/${r.id}/`, { est_correcte: isCorrect })
-          );
-        }
-      });
-    });
-
-    Promise.all(patches)
-      .then(() => message.success('Réponses sauvegardées'))
-      .catch(() => message.error('Erreur de sauvegarde'))
-      .finally(() => setLoading(false));
+  const closeModal = () => {
+    setModalVisible(false);
+    setQuestionToEdit(null);
   };
 
-  if (loading || !quiz) return <Spin size="large" />;
+  const filteredQuestions = useMemo(() => {
+    if (!quiz) return [];
+    return quiz.questions.filter(q =>
+      q.texte.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [quiz, searchTerm]);
+
+  const midIndex = Math.ceil(filteredQuestions.length / 2);
+  const leftQuestions = filteredQuestions.slice(0, midIndex);
+  const rightQuestions = filteredQuestions.slice(midIndex);
+
+  const renderQuestion = (question) => (
+    <Card
+      key={question.id}
+      type="inner"
+      title={
+        <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+          <span>{question.texte}</span>
+          <Button size="small" onClick={() => openModal(question)}>
+            Modifier
+          </Button>
+        </Space>
+      }
+      style={{ marginBottom: 16 }}
+    >
+      {question.reponses.map(answer => (
+        <Radio key={answer.id} checked={answer.est_correcte} disabled style={{ display: 'block', marginBottom: 8 }}>
+          {answer.texte}
+        </Radio>
+      ))}
+    </Card>
+  );
 
   return (
-    <Card style={{ maxWidth: 800, margin: 'auto' }}>
-      <Title level={3}>{quiz.titre}</Title>
-      <List
-        itemLayout="vertical"
-        dataSource={quiz.questions}
-        renderItem={question => (
-          <List.Item key={question.id}>
-            <Title level={5}>{question.texte}</Title>
-            <Checkbox.Group
-              value={answers[question.id]}
-              onChange={(checkedValues) => onChange(question.id, checkedValues)}
-            >
-              <List
-                dataSource={question.reponses}
-                renderItem={rep => (
-                  <List.Item key={rep.id}>
-                    <Checkbox value={rep.id}>{rep.texte}</Checkbox>
-                  </List.Item>
-                )}
-              />
-            </Checkbox.Group>
-          </List.Item>
-        )}
-      />
-      <Button type="primary" onClick={saveAnswers} disabled={loading} style={{ marginTop: 20 }}>
-        Enregistrer les réponses correctes
+    <div style={{ padding: 24 }}>
+      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
+        <Col>
+          <Breadcrumb style={{ fontSize: 16 }}>
+            <Breadcrumb.Item key="home" icon={<HomeOutlined />}>
+              <Link to="/">Accueil</Link>
+            </Breadcrumb.Item>
+            <Breadcrumb.Item key="quiz-list">
+              <Link to="/quizzes">Quiz</Link>
+            </Breadcrumb.Item>
+            <Breadcrumb.Item key="quiz-detail">{quiz?.titre}</Breadcrumb.Item>
+          </Breadcrumb>
+        </Col>
+        <Col>
+          <Input.Search
+            placeholder="Rechercher une question"
+            allowClear
+            enterButton
+            onSearch={value => setSearchTerm(value)}
+            style={{ width: 280 }}
+          />
+        </Col>
+      </Row>
+
+      <Title level={2}>{quiz?.titre}</Title>
+
+      <Paragraph><b>Ordre :</b> {quiz?.ordre}</Paragraph>
+      <Paragraph><b>Créé par :</b> {quiz?.created_by?.email || 'N/A'}</Paragraph>
+      <Paragraph><b>Créé le :</b> {quiz?.created_at || 'N/A'}</Paragraph>
+      <Paragraph><b>Dernière mise à jour :</b> {quiz?.updated_at || 'N/A'}</Paragraph>
+
+      <Row gutter={24}>
+        <Col xs={24} md={12}>
+          {leftQuestions.map(renderQuestion)}
+        </Col>
+        <Col xs={24} md={12}>
+          {rightQuestions.map(renderQuestion)}
+        </Col>
+      </Row>
+
+      <Button type="primary" style={{ marginTop: 20 }} onClick={() => navigate('/quizzes')}>
+        Retour à la liste des quiz
       </Button>
-    </Card>
+
+      <QuestionUpdateModal
+        visible={modalVisible}
+        question={questionToEdit}
+        onClose={closeModal}
+        onUpdate={loadQuiz}
+      />
+    </div>
   );
 };
 
