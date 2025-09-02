@@ -5,7 +5,6 @@ import {
   Typography,
   Radio,
   Breadcrumb,
-  Spin,
   message,
   Button,
   Row,
@@ -82,7 +81,19 @@ const QuizDetail = () => {
       style={{ marginBottom: 16 }}
     >
       {question.reponses.map(answer => (
-        <Radio key={answer.id} checked={answer.est_correcte} disabled style={{ display: 'block', marginBottom: 8 }}>
+        <Radio
+          key={answer.id}
+          checked={answer.est_correcte}
+          disabled
+          style={{
+            display: 'block',
+            marginBottom: 8,
+            backgroundColor: answer.est_correcte ? '#d9f7be' : 'white', // vert clair pour bonne réponse
+            borderRadius: 4,
+            color: 'black',
+            padding: '4px 8px',
+          }}
+        >
           {answer.texte}
         </Radio>
       ))}
@@ -113,13 +124,6 @@ const QuizDetail = () => {
           />
         </Col>
       </Row>
-
-      <Title level={2}>{quiz?.titre}</Title>
-
-      <Paragraph><b>Ordre :</b> {quiz?.ordre}</Paragraph>
-      <Paragraph><b>Créé par :</b> {quiz?.created_by?.email || 'N/A'}</Paragraph>
-      <Paragraph><b>Créé le :</b> {quiz?.created_at || 'N/A'}</Paragraph>
-      <Paragraph><b>Dernière mise à jour :</b> {quiz?.updated_at || 'N/A'}</Paragraph>
 
       <Row gutter={24}>
         <Col xs={24} md={12}>

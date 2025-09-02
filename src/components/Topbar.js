@@ -15,7 +15,7 @@ const Topbar = ({ collapsed, onToggle }) => {
 
   useEffect(() => {
     // Charger info utilisateur connecté
-    api.get('/auth/user/profile/')
+    api.get('/auth/user/')
       .then(res => {
         setUserEmail(res.data.email);
       })
@@ -50,7 +50,7 @@ const Topbar = ({ collapsed, onToggle }) => {
     <Header
       style={{
         position: 'fixed',
-        width: '95%',
+        width: '90%',
         height: 64,
         background: '#fff',
         padding: '0 24px',

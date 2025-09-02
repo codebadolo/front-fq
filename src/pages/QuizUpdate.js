@@ -1,354 +1,233 @@
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import { useEffect, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Breadcrumb,
-  Button,
-  Card,
-  Checkbox,
-  Divider,
   Form,
   Input,
-  List,
-  Popconfirm,
+  InputNumber,
+  Button,
+  Card,
   Space,
-  Spin,
-  Typography,
   message,
-  Row,
-  Col,
+  Typography,
 } from 'antd';
-import axios from 'axios';
-import { useEffect, useState } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
+import api from '../api';
+
+import QuestionUpdateModal from './QuestionUpdateModal';
+import ResponseUpdateModal from './ResponseUpdateModal';
 
 const { Title } = Typography;
-
-function generateTempId() {
-  return Math.random().toString(36).substr(2, 9);
-}
 
 const QuizUpdate = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [quiz, setQuiz] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [questions, setQuestions] = useState([]);
   const [form] = Form.useForm();
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
+  // State for modals
+  const [questionModalVisible, setQuestionModalVisible] = useState(false);
+  const [responseModalVisible, setResponseModalVisible] = useState(false);
+  const [questionToEdit, setQuestionToEdit] = useState(null);
+  const [responseToEdit, setResponseToEdit] = useState(null);
+
+  // Load quiz data
   useEffect(() => {
     setLoading(true);
-    axios.get(`http://localhost:8000/api/quizzes/${id}/`)
+    api.get(`/quizzes/${id}/`)
       .then(res => {
-        setQuiz(res.data);
-        form.setFieldsValue({ titre: res.data.titre, ordre: res.data.ordre });
-        const loadedQuestions = res.data.questions.map(q => ({
-          ...q,
-          _isNew: false,
-          _deleted: false,
-          reponses: q.reponses.map(r => ({ ...r, _isNew: false, _deleted: false })),
-        }));
-        setQuestions(loadedQuestions);
+        const quiz = res.data;
+        form.setFieldsValue({
+          titre: quiz.titre,
+          ordre: quiz.ordre,
+          questions: quiz.questions.map(q => ({
+            id: q.id,
+            texte: q.texte,
+            reponses: q.reponses.map(r => ({
+              id: r.id,
+              texte: r.texte,
+              est_correcte: r.est_correcte,
+            })),
+          })),
+        });
       })
-      .catch(() => message.error('Erreur chargement quiz'))
-      .finally(() => setLoading(false));
+      .catch(() => {
+        message.error("Erreur lors du chargement du quiz");
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   }, [id, form]);
 
-  const ajouterQuestion = () => setQuestions([...questions, {
-    id: generateTempId(),
-    texte: '',
-    _isNew: true,
-    _deleted: false,
-    reponses: [],
-  }]);
-
-  const supprimerQuestion = (qId) => setQuestions(questions.map(q =>
-    q.id === qId ? { ...q, _deleted: true } : q
-  ));
-
-  const modifierTexteQuestion = (qId, texte) => setQuestions(questions.map(q =>
-    q.id === qId ? { ...q, texte } : q
-  ));
-
-  const ajouterReponse = (qId) => {
-    const newReponse = { id: generateTempId(), texte: '', est_correcte: false, _isNew: true, _deleted: false };
-    setQuestions(questions.map(q =>
-      q.id === qId ? { ...q, reponses: [...q.reponses, newReponse] } : q
-    ));
-  };
-
-  const supprimerReponse = (qId, rId) => setQuestions(questions.map(q =>
-    q.id === qId ? {
-      ...q,
-      reponses: q.reponses.map(r => r.id === rId ? { ...r, _deleted: true } : r)
-    } : q
-  ));
-
-  const modifierTexteReponse = (qId, rId, texte) => setQuestions(questions.map(q =>
-    q.id === qId ? {
-      ...q,
-      reponses: q.reponses.map(r => r.id === rId ? { ...r, texte } : r)
-    } : q
-  ));
-
-  const toggleCorrecte = (qId, rId) => {
-    setQuestions(questions.map(q => {
-      if (q.id !== qId) return q;
-      return {
-        ...q,
-        reponses: q.reponses.map(r => ({
-          ...r,
-          est_correcte: r.id === rId,
-        })),
-      };
-    }));
-  };
-
-  // Validation personnalisée avant sauvegarde
-  const validateQuestions = () => {
-    if (!form.getFieldValue('titre').trim()) {
-      message.error('Le titre du quiz est obligatoire.');
-      return false;
-    }
-    if (!(form.getFieldValue('ordre') >= 1)) {
-      message.error("L'ordre du quiz doit être un nombre supérieur ou égal à 1.");
-      return false;
-    }
-    for (const q of questions) {
-      if (q._deleted) continue;
-      if (!q.texte.trim()) {
-        message.error('Chaque question doit avoir un texte.');
-        return false;
-      }
-      const validReponses = q.reponses.filter(r => !r._deleted);
-      if (validReponses.length === 0) {
-        message.error('Chaque question doit avoir au moins une réponse.');
-        return false;
-      }
-      if (!validReponses.some(r => r.est_correcte)) {
-        message.error('Chaque question doit avoir au moins une réponse correcte.');
-        return false;
-      }
-      for (const r of validReponses) {
-        if (!r.texte.trim()) {
-          message.error('Chaque réponse doit avoir un texte.');
-          return false;
-        }
-      }
-    }
-    return true;
-  };
-
-  const saveAll = async () => {
-    if (!validateQuestions()) return;
-
-    setLoading(true);
-    message.loading({ content: 'Enregistrement...', key: 'saving' });
+  // Submit updated quiz
+  const onFinish = async (values) => {
+    setSubmitting(true);
     try {
-      await axios.patch(`http://localhost:8000/api/quizzes/${quiz.id}/`, {
-        titre: form.getFieldValue('titre'),
-        ordre: form.getFieldValue('ordre'),
-      });
-
-      await Promise.all(questions.filter(q => q._deleted && !q._isNew).map(q =>
-        axios.delete(`http://localhost:8000/api/questions/${q.id}/`)
-      ));
-
-      for (const q of questions) {
-        if (q._deleted) continue;
-
-        let savedQuestion = q;
-        if (q._isNew) {
-          const resQ = await axios.post(`http://localhost:8000/api/questions/`, {
-            texte: q.texte,
-            quiz: quiz.id,
-          });
-          savedQuestion = { ...q, id: resQ.data.id, _isNew: false };
-        } else {
-          await axios.patch(`http://localhost:8000/api/questions/${q.id}/`, { texte: q.texte });
-        }
-
-        await Promise.all(savedQuestion.reponses.filter(r => r._deleted && !r._isNew).map(r =>
-          axios.delete(`http://localhost:8000/api/reponses/${r.id}/`)
-        ));
-
-        for (const r of savedQuestion.reponses) {
-          if (r._deleted) continue;
-          if (r._isNew) {
-            await axios.post(`http://localhost:8000/api/reponses/`, {
-              texte: r.texte,
-              est_correcte: r.est_correcte,
-              question: savedQuestion.id,
-            });
-          } else {
-            await axios.patch(`http://localhost:8000/api/reponses/${r.id}/`, {
-              texte: r.texte,
-              est_correcte: r.est_correcte,
-            });
-          }
-        }
-      }
-
-      message.success({ content: 'Quiz enregistré avec succès', key: 'saving', duration: 2 });
-      navigate('/quizzes');
+      await api.put(`/quizzes/${id}/`, values);
+      message.success("Quiz mis à jour avec succès");
+      navigate(`/quizzes/${id}`);
     } catch (error) {
-      console.error(error);
-      message.error({ content: 'Erreur lors de l’enregistrement', key: 'saving', duration: 2 });
+      message.error("Erreur lors de la mise à jour du quiz");
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
-  if (loading || !quiz) return <Spin size="large" style={{ marginTop: 100, textAlign: 'center' }} />;
+  // Modal open/close handlers
+  const openQuestionModal = (question) => {
+    setQuestionToEdit(question);
+    setQuestionModalVisible(true);
+  };
+  const closeQuestionModal = () => {
+    setQuestionModalVisible(false);
+    setQuestionToEdit(null);
+  };
+  const openResponseModal = (response) => {
+    setResponseToEdit(response);
+    setResponseModalVisible(true);
+  };
+  const closeResponseModal = () => {
+    setResponseModalVisible(false);
+    setResponseToEdit(null);
+  };
 
-  return (
-    <Card title={`Édition du Quiz : ${quiz.titre}`} style={{ maxWidth: '100%', margin: '40px auto', padding: 24 }}>
-      <Breadcrumb style={{ marginBottom: 24 }}>
-        <Breadcrumb.Item>
-          <Link to="/">Accueil</Link>
-        </Breadcrumb.Item>
-
-        <Breadcrumb.Item>
-          <Link to="/quizzes">Quiz</Link>
-        </Breadcrumb.Item>
-
-        <Breadcrumb.Item>Modification</Breadcrumb.Item>
-      </Breadcrumb>
-
-      <Form form={form} layout="vertical" style={{ marginBottom: 30 }}>
-        <Form.Item
-          label="Titre du quiz"
-          name="titre"
-          rules={[
-            { required: true, message: 'Le titre du quiz est obligatoire' },
-            { min: 3, message: 'Le titre doit contenir au moins 3 caractères' },
-          ]}
-        >
-          <Input size="large" placeholder="Titre du quiz" />
-        </Form.Item>
-        <Form.Item
-          label="Ordre"
-          name="ordre"
-          rules={[
-            { required: true, message: "L'ordre est obligatoire" },
-            {
-              validator: (_, value) =>
-                value >= 1 ? Promise.resolve() : Promise.reject(new Error("L'ordre doit être supérieur ou égal à 1")),
-            },
-          ]}
-        >
-          <Input type="number" size="large" placeholder="Ordre d'affichage" />
-        </Form.Item>
-      </Form>
-
-      <Divider />
-
-      <Button
-        type="dashed"
-        onClick={ajouterQuestion}
-        icon={<PlusOutlined />}
-        block
-        style={{ marginBottom: 24, fontWeight: 'bold', fontSize: 16 }}
+  // Render each question card with a button to open question modal
+  const renderQuestion = (field, index) => (
+    <Card
+      key={field.key}
+      type="inner"
+      title={`Question ${index + 1}`}
+      style={{ marginBottom: 24 }}
+      extra={<Button size="small" onClick={() => openQuestionModal(form.getFieldValue(['questions', index]))}>Modifier Question</Button>}
+    >
+      <Form.Item
+        {...field}
+        label="Texte de la question"
+        name={[field.name, 'texte']}
+        fieldKey={[field.fieldKey, 'texte']}
+        rules={[{ required: true, message: "Veuillez saisir le texte de la question" }]}
       >
-        Ajouter une question
-      </Button>
+        <Input />
+      </Form.Item>
 
-      <Row gutter={[24, 24]}>
-        {questions.filter(q => !q._deleted).map(q => (
-          <Col key={q.id} xs={24} sm={24} md={12}>
-            <Card
-              size="small"
-              type="inner"
-              style={{
-                borderRadius: 10,
-                boxShadow: '0 1px 6px rgba(0,0,0,0.1)',
-                backgroundColor: '#fafafa',
-                marginBottom: 0,
-              }}
-              extra={
-                <Popconfirm
-                  title="Supprimer cette question ?"
-                  onConfirm={() => supprimerQuestion(q.id)}
-                  okText="Oui"
-                  cancelText="Non"
+      <Form.List name={[field.name, "reponses"]}>
+        {(answerFields, { add: addAnswer, remove: removeAnswer }) => (
+          <>
+            {answerFields.map(({ key, name, ...restField }) => (
+              <Space
+                key={key}
+                style={{ display: 'flex', marginBottom: 8, alignItems: 'center' }}
+                align="center"
+                size="middle"
+                direction="horizontal"
+              >
+                <Form.Item
+                  {...restField}
+                  name={[name, "texte"]}
+                  fieldKey={[restField.fieldKey, 'texte']}
+                  rules={[{ required: true, message: "Veuillez saisir la réponse" }]}
+                  style={{ marginBottom: 0, minWidth: 200 }}
                 >
-                  <Button danger icon={<DeleteOutlined />} />
-                </Popconfirm>
-              }
-            >
-              <Input.TextArea
-                rows={3}
-                value={q.texte}
-                onChange={e => modifierTexteQuestion(q.id, e.target.value)}
-                placeholder="Texte de la question"
-                style={{
-                  marginBottom: 20,
-                  fontSize: 16,
-                  borderRadius: 6,
-                  backgroundColor: 'white',
-                }}
-              />
+                  <Input />
+                </Form.Item>
 
+                <Form.Item
+                  {...restField}
+                  name={[name, "est_correcte"]}
+                  valuePropName="checked"
+                  fieldKey={[restField.fieldKey, 'est_correcte']}
+                  style={{ marginBottom: 0, width: 100 }}
+                >
+                  <Input type="checkbox" aria-label="Réponse correcte" />
+                </Form.Item>
+
+                <Button size="small" onClick={() => openResponseModal(form.getFieldValue(['questions', index, 'reponses', name]))}>
+                  Modifier Réponse
+                </Button>
+
+                <MinusCircleOutlined
+                  onClick={() => removeAnswer(name)}
+                  style={{ color: 'red', fontSize: 20 }}
+                />
+              </Space>
+            ))}
+            <Form.Item>
               <Button
                 type="dashed"
-                onClick={() => ajouterReponse(q.id)}
+                onClick={() => addAnswer()}
+                block
                 icon={<PlusOutlined />}
-                size="small"
-                style={{ marginBottom: 16, fontWeight: 'bold' }}
               >
                 Ajouter une réponse
               </Button>
-
-              <List
-                dataSource={q.reponses.filter(r => !r._deleted)}
-                renderItem={r => (
-                  <List.Item
-                    key={r.id}
-                    actions={[
-                      <Popconfirm
-                        title="Supprimer cette réponse ?"
-                        onConfirm={() => supprimerReponse(q.id, r.id)}
-                        okText="Oui"
-                        cancelText="Non"
-                        key="popconfirm"
-                      >
-                        <Button danger icon={<DeleteOutlined />} size="small" />
-                      </Popconfirm>,
-                    ]}
-                    style={{ padding: '8px 12px', borderRadius: 6, backgroundColor: 'white', marginBottom: 8 }}
-                  >
-                    <Checkbox
-                      checked={r.est_correcte}
-                      onChange={() => toggleCorrecte(q.id, r.id)}
-                      style={{ marginRight: 12 }}
-                    />
-                    <Input
-                      value={r.texte}
-                      onChange={e => modifierTexteReponse(q.id, r.id, e.target.value)}
-                      placeholder="Texte réponse"
-                      style={{ fontSize: 15, borderRadius: 6 }}
-                    />
-                  </List.Item>
-                )}
-              />
-            </Card>
-          </Col>
-        ))}
-      </Row>
-
-      <Divider />
-
-      <Row justify="space-between">
-        <Col>
-          <Button type="primary" onClick={saveAll} loading={loading} size="large">
-            Enregistrer toutes les modifications
-          </Button>
-        </Col>
-        <Col>
-          <Button onClick={() => navigate('/quizzes')} disabled={loading} size="large">
-            Annuler
-          </Button>
-        </Col>
-      </Row>
+            </Form.Item>
+          </>
+        )}
+      </Form.List>
     </Card>
+  );
+
+  return (
+    <>
+      <Card title={<Title level={2}>Modifier le quiz</Title>}>
+        <Form form={form} layout="vertical" onFinish={onFinish} disabled={loading} autoComplete="off">
+          <Form.Item
+            label="Titre"
+            name="titre"
+            rules={[{ required: true, message: "Veuillez saisir le titre du quiz" }]}
+          >
+            <Input placeholder="Titre du quiz" />
+          </Form.Item>
+
+          <Form.Item
+            label="Ordre"
+            name="ordre"
+            rules={[{ type: 'number', min: 1, message: "L'ordre doit être supérieur ou égal à 1" }]}
+          >
+            <InputNumber min={1} />
+          </Form.Item>
+
+          <Form.List name="questions">
+            {(fields, { add, remove }) => (
+              <>
+                {fields.map((field, index) => renderQuestion(field, index))}
+
+                <Form.Item>
+                  <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
+                    Ajouter une question
+                  </Button>
+                </Form.Item>
+              </>
+            )}
+          </Form.List>
+
+          <Form.Item>
+            <Space>
+              <Button type="primary" htmlType="submit" loading={submitting}>
+                Enregistrer
+              </Button>
+              <Button onClick={() => navigate(`/quizzes/${id}`)}>
+                Annuler
+              </Button>
+            </Space>
+          </Form.Item>
+        </Form>
+      </Card>
+
+      {/* Modals separately rendered */}
+      <QuestionUpdateModal
+        visible={questionModalVisible}
+        question={questionToEdit}
+        onClose={closeQuestionModal}
+        onUpdate={() => { closeQuestionModal(); form.submit(); }}
+      />
+      <ResponseUpdateModal
+        visible={responseModalVisible}
+        response={responseToEdit}
+        onClose={closeResponseModal}
+        onUpdate={() => { closeResponseModal(); form.submit(); }}
+      />
+    </>
   );
 };
 

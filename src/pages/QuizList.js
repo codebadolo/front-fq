@@ -172,6 +172,7 @@ const QuizList = () => {
           pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50'] }}
           scroll={{ x: 1200 }}
           bordered
+          size='small'
           locale={{ emptyText: 'Aucun quiz trouvé' }}
           sticky
         />
